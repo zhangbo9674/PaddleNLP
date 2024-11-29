@@ -62,9 +62,6 @@ class CheckpointConverter:
             self.cur_rank_optimizer_state_file_names,
         ) = self.get_local_checkpoint_file_names()
 
-        logger.info(f"self.cur_rank_model_state_file_names: {self.cur_rank_model_state_file_names}")
-        logger.info(f"self.cur_rank_optimizer_state_file_names: {self.cur_rank_optimizer_state_file_names}")
-
         self.global_model_state_file_names = self.gather_global_object(self.cur_rank_model_state_file_names)
 
         self.global_optimizer_state_file_names = self.gather_global_object(self.cur_rank_optimizer_state_file_names)
@@ -1011,17 +1008,13 @@ class CheckpointConverter:
 
     def get_local_checkpoint_file_names(self):
         cur_rank_files = os.listdir(self.path)
-        logger.info(f"cur_rank_files: {cur_rank_files}")
         cur_rank_model_state_file_names = []
         cur_rank_optimizer_state_file_names = []
         for file_name in cur_rank_files:
-            logger.info(f"check for: {file_name}")
             if file_name.endswith(MODEL_WEIGHT_SUFFIX):
                 cur_rank_model_state_file_names.append(file_name)
-                logger.info(f"append to cur_rank_model_state_file_names: {file_name}")
             elif file_name.endswith(OPTIMIZER_WEIGHT_SUFFIX):
                 cur_rank_optimizer_state_file_names.append(file_name)
-                logger.info(f"append to cur_rank_optimizer_state_file_names: {file_name}")
         if SCHEDULER_NAME in cur_rank_model_state_file_names:
             cur_rank_model_state_file_names.remove(SCHEDULER_NAME)
         if SCALAR_NAME in cur_rank_model_state_file_names:
