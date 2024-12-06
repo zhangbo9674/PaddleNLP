@@ -40,6 +40,7 @@ from paddlenlp.transformers.refined_recompute import (
     create_skip_config_for_refined_recompute,
     recompute,
 )
+from paddlenlp.utils.tools import get_env_device
 
 from .. import linear_utils
 from ..activations import ACT2FN
@@ -233,7 +234,7 @@ def scaled_dot_product_attention(
 
 def masked_fill(x, mask, value):
     y = paddle.full(x.shape, value, x.dtype)
-    return paddle.where(mask, y, x)
+    return paddle.where(mask.to("bool"), y, x)
 
 
 def is_casual_mask(attention_mask):
@@ -1020,7 +1021,14 @@ class Qwen2Model(Qwen2PretrainedModel):
                 past_key_values_length=past_key_values_length,
             )
         # Convert bool attention_mask to float attention mask, which will be added to attention_scores later
-        expanded_attn_mask = paddle.where(expanded_attn_mask, 0.0, paddle.finfo(dtype).min).astype(dtype)
+        if get_env_device() == "xpu":
+            x = paddle.to_tensor(0.0, dtype="float32")
+            y = paddle.to_tensor(-1.7005809656952787e38, dtype="float32")
+            expanded_attn_mask = paddle.where(expanded_attn_mask, x, y)
+        else:
+            expanded_attn_mask = paddle.where(expanded_attn_mask.to("bool"), 0.0, paddle.finfo(dtype).min).astype(
+                dtype
+            )
         return expanded_attn_mask
 
     @paddle.jit.not_to_static
