@@ -1109,13 +1109,13 @@ function llama_dy2st_auto_bs2_bf16_DP2-MP1-PP1-CINN() {
     ips=-1
     mem=-1
     echo "result: to_static=$to_static loss=$loss ips=$ips mem=$mem"
-    # loss_base=9.99302673
-    # if [ $IS_A100 -ne 0 ];then
-    #     loss_base=10.2098999
-    # fi
-    # ips_base=-1
-    # mem_base=-1
-    # check_result $FUNCNAME ${loss_base} ${loss} ${ips_base} ${ips} ${mem_base} ${mem}
+    loss_base=9.99302597
+    if [ $IS_A100 -ne 0 ];then
+        loss_base=10.2098999
+    fi
+    ips_base=-1
+    mem_base=-1
+    check_result $FUNCNAME ${loss_base} ${loss} ${ips_base} ${ips} ${mem_base} ${mem}
 
     unset FLAGS_use_cinn
     unset FLAGS_dist_prim_all
