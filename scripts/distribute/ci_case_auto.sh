@@ -87,7 +87,6 @@ function llama_case_list_auto() {
     fun_list=(
         # The test name must have "llama_" as a prefix, which will 
         # be used for tracking the execution status of the case.
-        llama_dy2st_auto_bs2_bf16_DP2-MP1-PP1-CINN
         llama_dygraph_auto_bs8_fp32_DP2
         llama_dygraph_auto_bs8_fp32_DP2-MP2
         llama_dygraph_auto_bs8_fp32_DP2-MP2-PP2
@@ -102,6 +101,7 @@ function llama_case_list_auto() {
         llama_align_dygraph_dy2st_pir_auto_grad_merge_bs2_fp32_DP1-MP1-PP1
         llama_align_dy2st_fthenb_and_vpp_auto_bs2_fp32_DP1-MP1-PP4
         llama_align_dygraph_dy2st_pir_auto_pp_bs2_bf16_DP1-MP1-PP4
+        llama_dy2st_auto_bs2_bf16_DP2-MP1-PP1-CINN
     )
     if [ $1 = "prepare_case" ]; then
         restore_func $fun_list  
