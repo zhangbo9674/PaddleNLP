@@ -1028,9 +1028,13 @@ function llama_dy2st_auto_bs2_bf16_DP2-MP1-PP1-CINN() {
     echo "=========== $FUNCNAME run begin ==========="
     export PYTHONPATH=$root_path/:$PYTHONPATH
     export FLAGS_call_stack_level=3
+    export FLAGS_cudnn_deterministic=1
     export NVIDIA_TF32_OVERRIDE=0
+    export FLAGS_embedding_deterministic=1
+    export FLAGS_flash_attn_version=v1
     export FLAGS_enable_pir_api=1
     export FLAGS_max_inplace_grad_add=4
+    export PARALLEL_CROSS_ENTROPY=true
 
     export FLAGS_use_cinn=1
     export FLAGS_dist_prim_all=1
