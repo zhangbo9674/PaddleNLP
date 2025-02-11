@@ -141,6 +141,7 @@ class AvxConfig:
 class SpeculateConfig:
     speculate_max_draft_token_num: int = 5
     speculate_method: str = None
+    return_full_hidden_states: bool = False
 
 
 class FusedMultiTransformerConfig:
@@ -740,8 +741,8 @@ class FusedMultiTransformerBase(Layer):
         return self._dtype
 
     def compute_layernorm_before_qkv(self, src, i):
-        if i == 0:
-            ln_out = self.norm_func(src, self.ln_scales[i], self.ln_biases[i], self._epsilon, begin_norm_axis=1)
+        if i == 0 and not self.config.speculate_config.speculate_method == "eagle":
+            ln_out = self.norm_func(src, self.ln_scales[i], self.ln_biases[i], self._epsilon, begin_norm_axis=1)[0]
         else:
             ln_out = src
 
@@ -1033,10 +1034,6 @@ class FusedMultiTransformerBase(Layer):
         kwargs["max_dec_len_this_time"] = max_dec_len_this_time
 
         if self.config.append_attn:
-            kwargs["encoder_block_shape_q"] = 64
-            kwargs["decoder_block_shape_q"] = 16
-            kwargs["max_partition_size"] = 32768
-            kwargs["encoder_max_partition_size"] = 32768
 
             from paddlenlp_ops import get_block_shape_and_split_kv_block
 
@@ -1055,10 +1052,9 @@ class FusedMultiTransformerBase(Layer):
                 kwargs.get("seq_lens_encoder", None),
                 kwargs.get("seq_lens_decoder", None),
                 max_enc_len_this_time,
+                max_dec_len_this_time,
                 kwargs.get("seq_lens_this_time", None),
                 kwargs.get("cum_offsets", None),
-                kwargs.get("encoder_block_shape_q", 64),
-                kwargs.get("decoder_block_shape_q", 16),
                 self.num_heads // self.kv_num_heads,
                 kwargs.get("block_size", 64),
                 self.config.speculate_config.speculate_max_draft_token_num,
@@ -1918,7 +1914,7 @@ class FusedMultiTransformerA8W8(FusedMultiTransformerBase):
                 quant_round_type=self.quant_round_type,
                 quant_max_bound=self.quant_max_bound,
                 quant_min_bound=self.quant_min_bound,
-            )
+            )[0]
         else:
             ln_out = src
 
@@ -2197,10 +2193,6 @@ class FusedBlockMultiTransformer(FusedMultiTransformerBase):
                 0.0,
                 0.0,
                 0.0,  # out_linear_in_scale
-                kwargs.get("encoder_block_shape_q", 64),
-                kwargs.get("decoder_block_shape_q", 16),
-                kwargs.get("max_partition_size", 32768),
-                kwargs.get("encoder_max_partition_size", 32768),
                 self.config.speculate_config.speculate_max_draft_token_num,
                 True,  # causal
                 self.config.speculate_config.speculate_method is not None,  # speculate_decoder
@@ -2299,16 +2291,19 @@ class FusedBlockMultiTransformer(FusedMultiTransformerBase):
         seq_lens_decoder = kwargs.get("seq_lens_decoder", None)
         max_input_length = kwargs.get("max_input_length", -1)
         output_padding_offset = kwargs.get("output_padding_offset", None)  # only used in speculative decoding
-        out = rebuild_padding_v2(
-            multi_block_output,
-            cum_offsets,
-            seq_lens_decoder,
-            seq_lens_encoder,
-            output_padding_offset,
-            max_input_length,
-        )
 
-        return out
+        if self.config.speculate_config.return_full_hidden_states:
+            return multi_block_output
+        else:
+            out = rebuild_padding_v2(
+                multi_block_output,
+                cum_offsets,
+                seq_lens_decoder,
+                seq_lens_encoder,
+                output_padding_offset,
+                max_input_length,
+            )
+            return out
 
 
 class FusedBlockMultiTransformerWeightOnly(FusedBlockMultiTransformer, FusedMultiTransformerWeightOnly):
@@ -2395,10 +2390,6 @@ class FusedBlockMultiTransformerA8W8(FusedBlockMultiTransformer, FusedMultiTrans
                 self.quant_max_bound,
                 self.quant_min_bound,
                 self.act_scales["out_linear_in_scale"][i],
-                kwargs.get("encoder_block_shape_q", 64),
-                kwargs.get("decoder_block_shape_q", 16),
-                kwargs.get("max_partition_size", 32768),
-                kwargs.get("encoder_max_partition_size", 32768),
                 self.config.speculate_config.speculate_max_draft_token_num,
                 True,  # causal
                 self.config.speculate_config.speculate_method is not None,  # speculate_decoder
@@ -2617,9 +2608,7 @@ class FusedBlockMultiTransformerFP8(FusedBlockMultiTransformer):
                 quant_round_type=1,
                 quant_max_bound=self.config.quant_max_bound,
                 quant_min_bound=self.config.quant_min_bound,
-            )
-            if in_dynamic_mode():
-                ln_out = ln_out[0]
+            )[0]
         else:
             ln_out = src
 
@@ -2760,10 +2749,6 @@ class FusedBlockMultiTransformerFP8(FusedBlockMultiTransformer):
                 self.quant_max_bound,
                 self.quant_min_bound,
                 self.act_scales["out_linear_in_scale"][i],
-                kwargs.get("encoder_block_shape_q", 64),
-                kwargs.get("decoder_block_shape_q", 16),
-                kwargs.get("max_partition_size", 32768),
-                kwargs.get("encoder_max_partition_size", 32768),
                 self.config.speculate_config.speculate_max_draft_token_num,
                 True,  # causal
                 False,  # speculate_decoder

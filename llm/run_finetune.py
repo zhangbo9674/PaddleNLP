@@ -52,16 +52,20 @@ from paddlenlp.transformers import (
     AutoModelForCausalLM,
     AutoModelForCausalLMPipe,
     AutoTokenizer,
+    DeepseekV2ForCausalLM,
+    DeepseekV2ForCausalLMPipe,
+    DeepseekV3ForCausalLM,
+    DeepseekV3ForCausalLMPipe,
     Llama3Tokenizer,
     LlamaForCausalLM,
     LlamaForCausalLMPipe,
     LlamaTokenizer,
     Qwen2ForCausalLM,
     Qwen2ForCausalLMPipe,
-    register_sequence_parallel_allreduce_hooks,
+    Qwen2MoeForCausalLM,
+    Qwen2MoeForCausalLMPipe,
 )
 from paddlenlp.transformers.configuration_utils import LlmMetaConfig
-from paddlenlp.transformers.refined_recompute import update_refined_recompute
 from paddlenlp.trl import DataConfig, ModelConfig, SFTConfig, SFTTrainer
 from paddlenlp.trl.llm_utils import (
     ZeroPaddingIterDatasetCallback,
@@ -76,10 +80,32 @@ from paddlenlp.utils.tools import get_env_device
 # Fine-tune Environment Variables to support sharding stage1 overlap optimization.
 os.environ["USE_CASUAL_MASK"] = "False"
 
-flash_mask_support_list = [LlamaForCausalLM, LlamaForCausalLMPipe, Qwen2ForCausalLM, Qwen2ForCausalLMPipe]
+flash_mask_support_list = [
+    DeepseekV2ForCausalLM,
+    DeepseekV2ForCausalLMPipe,
+    DeepseekV3ForCausalLM,
+    DeepseekV3ForCausalLMPipe,
+    LlamaForCausalLM,
+    LlamaForCausalLMPipe,
+    Qwen2ForCausalLM,
+    Qwen2ForCausalLMPipe,
+    Qwen2MoeForCausalLM,
+    Qwen2MoeForCausalLMPipe,
+]
+
+
+def paddlenlp_verison_check():
+    import paddlenlp
+    from paddlenlp.utils.tools import compare_version
+
+    if not compare_version(paddlenlp.__version__, "3.0.0.b2"):
+        raise ValueError(
+            "This scripts require paddlenlp >= 3.0.0b3, please reinstall: pip install paddlenlp >= 3.0.0b3 "
+        )
 
 
 def main():
+    paddlenlp_verison_check()
     parser = PdArgumentParser((GenerateArgument, ModelConfig, ReftArgument, DataConfig, SFTConfig))
     if len(sys.argv) >= 2 and sys.argv[1].endswith(".json"):
         gen_args, model_args, reft_args, data_args, training_args = parser.parse_json_file_and_cmd_lines()
@@ -142,11 +168,14 @@ def main():
         quantization_config=quantization_config,
     )
 
+    architectures_to_check = {"Qwen2Moe", "DeepseekV2", "DeepseekV3"}
+    if (
+        any(architecture in str(model_config.architectures) for architecture in architectures_to_check)
+        and training_args.data_parallel_degree > 1
+    ):
+        training_args.use_expert_parallel = True
+
     LlmMetaConfig.set_llm_config(model_config, training_args)
-    model_config.refined_recompute = update_refined_recompute(
-        training_args.refined_recompute,
-        model_args.lora,
-    )
     model_config.use_fast_layer_norm = model_args.use_fast_layer_norm
 
     # Config for model using dropout, such as GPT.
@@ -225,10 +254,6 @@ def main():
         else:
             raise NotImplementedError("Only support neftune for model with get_input_embeddings")
 
-    if training_args.sequence_parallel:
-        register_sequence_parallel_allreduce_hooks(
-            model, training_args.gradient_accumulation_steps, training_args.fuse_sequence_parallel_allreduce
-        )
     # Load tokenizer & dataset
     tokenizer = AutoTokenizer.from_pretrained(model_args.model_name_or_path, from_aistudio=model_args.from_aistudio)
     reft_layers = None
@@ -511,6 +536,7 @@ def create_peft_model(model_args, reft_args, training_args, dtype, model_config,
                 base_model_name_or_path=model_args.model_name_or_path,
                 use_quick_lora=model_args.use_quick_lora,
                 lora_use_mixer=model_args.lora_use_mixer,
+                use_mora=model_args.use_mora,
             )
             model = LoRAModel(model, lora_config)
         else:
@@ -580,7 +606,12 @@ def create_peft_model(model_args, reft_args, training_args, dtype, model_config,
 def trans_dataset_to_ids(train_ds, dev_ds, test_ds, model_args, data_args, trans_func, eval_zero_padding):
     if train_ds is not None:
         train_ds = train_ds.map(
-            partial(trans_func, is_test=False, zero_padding=data_args.zero_padding, flash_mask=model_args.flash_mask)
+            partial(
+                trans_func,
+                is_test=False,
+                zero_padding=data_args.zero_padding,
+                flash_mask=model_args.flash_mask,
+            )
         )
     if dev_ds is not None:
         dev_ds = dev_ds.map(
