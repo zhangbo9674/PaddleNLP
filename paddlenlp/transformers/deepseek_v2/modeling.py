@@ -527,7 +527,7 @@ class DeepseekV2YarnRotaryEmbedding(DeepseekV2RotaryEmbedding):
 
         t = paddle.arange(seq_len, dtype=paddle.float32)
 
-        freqs = paddle.outer(t, self.inv_freq)
+        freqs = paddle.outer(t, paddle.cast(self.inv_freq, dtype="float32"))
 
         _mscale = float(
             yarn_get_mscale(self.scaling_factor, self.mscale)
